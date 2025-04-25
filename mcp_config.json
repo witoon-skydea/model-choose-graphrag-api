@@ -1,0 +1,20 @@
+{
+  "tools": {
+    "graphrag-api": {
+      "command": "python3",
+      "args": [
+        "/Users/witoonpongsilathong/MCP_folder/mm_dev_mode/model-choose-graphrag-api-v1/mcp-mmgrag.py"
+      ],
+      "cwd": "/Users/witoonpongsilathong/MCP_folder/mm_dev_mode/model-choose-graphrag-api-v1",
+      "venv": "/Users/witoonpongsilathong/MCP_folder/mm_dev_mode/model-choose-graphrag-api-v1/venv"
+    },
+    "graphrag-fallback": {
+      "command": "python3",
+      "args": [
+        "/Users/witoonpongsilathong/MCP_folder/mm_dev_mode/model-choose-graphrag-api-v1/mcp-mmgrag-fallback.py"
+      ],
+      "cwd": "/Users/witoonpongsilathong/MCP_folder/mm_dev_mode/model-choose-graphrag-api-v1",
+      "venv": "/Users/witoonpongsilathong/MCP_folder/mm_dev_mode/model-choose-graphrag-api-v1/venv"
+    }
+  }
+}
