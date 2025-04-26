@@ -31,9 +31,18 @@ def contains_thai(text: str) -> bool:
     
     # Calculate percentage of Thai characters
     if len(text) > 0:
-        thai_percentage = thai_chars / len(text)
-        # Consider text as Thai if it contains more than 10% Thai characters
-        return thai_percentage > 0.1
+        # Count non-whitespace characters for a more accurate percentage
+        non_whitespace = len([c for c in text if not c.isspace()])
+        if non_whitespace > 0:
+            thai_percentage = thai_chars / non_whitespace
+        else:
+            thai_percentage = thai_chars / len(text)
+            
+        # More adaptive threshold - lower for longer text, higher for shorter text
+        threshold = max(0.05, min(0.15, 10 / len(text) + 0.05))
+        
+        # Consider text as Thai if it contains enough Thai characters
+        return thai_percentage > threshold or thai_chars > 10
     
     return False
 

@@ -69,20 +69,39 @@ def extract_thai_entities_relations(llm, text: str) -> Tuple[List[Dict[str, Any]
         print(f"Error in Thai entity extraction: {e}")
         # Use a simpler approach as fallback
         try:
-            # Direct question to the model
-            simple_prompt = f"""Extract main entities (people, organizations, places) from this Thai text and format as JSON:
+            # Direct question to the model with improved Thai-specific prompt
+            simple_prompt = f"""
+            สกัดเอนทิตีหลัก (คน, องค์กร, สถานที่) จากข้อความภาษาไทยนี้และจัดรูปแบบเป็น JSON:
             {{
               "entities": [
-                {{"id": "1", "name": "Example Name", "type": "person"}}
+                {{"id": "person_1", "name": "ชื่อคน", "type": "person"}},
+                {{"id": "org_1", "name": "ชื่อองค์กร", "type": "organization"}},
+                {{"id": "place_1", "name": "ชื่อสถานที่", "type": "location"}}
               ]
             }}
             
-            Text: {text[:1000]}
+            ข้อความ: {text[:1000]}
             
-            JSON:"""
+            ตอบเป็น JSON เท่านั้น:"""
             
             fallback_response = llm.invoke(simple_prompt)
             result_text = fallback_response
+            
+            # If still failed, try English prompt as a last resort
+            if not result_text or not ("{" in result_text and "}" in result_text):
+                english_prompt = f"""Extract main entities (people, organizations, places) from this Thai text and format as JSON:
+                {{
+                  "entities": [
+                    {{"id": "1", "name": "Example Name", "type": "person"}}
+                  ]
+                }}
+                
+                Text: {text[:800]}
+                
+                JSON:"""
+                
+                fallback_response = llm.invoke(english_prompt)
+                result_text = fallback_response
         except Exception as fallback_error:
             print(f"Fallback extraction also failed: {fallback_error}")
             return [], []
@@ -98,16 +117,37 @@ def extract_thai_entities_relations(llm, text: str) -> Tuple[List[Dict[str, Any]
             try:
                 result = json.loads(json_str)
             except json.JSONDecodeError:
-                # Try cleaning the JSON string
+                # Try cleaning the JSON string with enhanced regex for Thai text
                 import re
-                json_str = re.sub(r'```json\s*|\s*```', '', json_str)  # Remove markdown code blocks
-                json_str = re.sub(r',\s*}', '}', json_str)  # Remove trailing commas
-                json_str = re.sub(r',\s*]', ']', json_str)  # Remove trailing commas in arrays
+                # Remove markdown code blocks
+                json_str = re.sub(r'```(?:json|thai)?\s*|\s*```', '', json_str)
+                # Remove trailing commas
+                json_str = re.sub(r',\s*}', '}', json_str)
+                json_str = re.sub(r',\s*]', ']', json_str)
+                # Fix common Thai JSON issues (extra spaces in keys, quotes issues)
+                json_str = re.sub(r'(\w+)\s*:', r'"\1":', json_str)  # Add quotes to bare keys
+                json_str = re.sub(r':\s*"([^"]*)"([^,}\]]*)[,}\]]', r':"\1\2"\3', json_str)  # Fix incomplete quotes
+                
                 try:
                     result = json.loads(json_str)
-                except:
-                    print("Could not parse JSON even after cleanup")
-                    return [], []
+                except json.JSONDecodeError as json_err:
+                    print(f"JSON decode error: {json_err}")
+                    # Try manual parsing as a last resort for common patterns
+                    try:
+                        # Construct minimal valid JSON
+                        entities = []
+                        relations = []
+                        
+                        # Simple regex extraction
+                        entity_matches = re.findall(r'"name"\s*:\s*"([^"]+)"\s*,\s*"type"\s*:\s*"([^"]+)"', json_str)
+                        for i, (name, entity_type) in enumerate(entity_matches):
+                            entity_id = f"{entity_type}_{i}"
+                            entities.append({"id": entity_id, "name": name, "type": entity_type})
+                        
+                        return entities, relations
+                    except Exception as manual_err:
+                        print(f"Manual parsing also failed: {manual_err}")
+                        return [], []
             
             # Extract entities and relations
             entities = result.get("entities", [])
@@ -118,9 +158,14 @@ def extract_thai_entities_relations(llm, text: str) -> Tuple[List[Dict[str, Any]
                 if "id" not in entity and "name" in entity:
                     # Create a simple ID from the name
                     name = entity["name"].lower()
-                    # Replace Thai characters with romanized versions where possible
-                    name = ''.join(c if c.isalnum() else '_' for c in name)
-                    entity["id"] = f"{entity.get('type', 'entity')}_{name}_{i}"
+                    # Replace Thai characters with romanized versions and use simplified IDs
+                    import re
+                    # Remove any non-alphanumeric characters and replace with underscores
+                    name = re.sub(r'[^\w\s]', '', name)
+                    # Replace spaces with underscores
+                    name = re.sub(r'\s+', '_', name)
+                    # Use a simplified ID format that's more readable
+                    entity["id"] = f"{entity.get('type', 'entity')}_{i}_{name[:10]}"
                 
                 # Ensure attributes exist
                 if "attributes" not in entity:
@@ -171,6 +216,9 @@ def extract_thai_query_entities(llm, query: str) -> List[str]:
     prompt = f"""
     กรุณาสกัดคำสำคัญที่เป็นชื่อเฉพาะ หัวข้อ หรือคำหลักจากคำถามนี้
     ส่งกลับเป็น JSON array เช่น ["คำ1", "คำ2"] เท่านั้น ไม่ต้องมีคำอธิบายเพิ่มเติม
+
+    โปรดสกัดชื่อคน บริษัท สถานที่ และคำสำคัญอื่นๆ ที่เกี่ยวข้องกับการค้นหาข้อมูล
+    ยกตัวอย่างเช่น "ใครเป็นผู้บริหารของบริษัท PTT" ควรสกัดได้ ["ผู้บริหาร", "บริษัท PTT"]
 
     คำถาม: {query}
 
