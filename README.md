@@ -1,6 +1,6 @@
 # Model-Choose GraphRAG API
 
-A powerful API service that combines RAG (Retrieval-Augmented Generation), Knowledge Graph, and Model Selection capabilities.
+A powerful API service that combines RAG (Retrieval-Augmented Generation), Knowledge Graph, and Model Selection capabilities with multilingual support.
 
 ## Features
 
@@ -12,6 +12,7 @@ A powerful API service that combines RAG (Retrieval-Augmented Generation), Knowl
 - **🔄 Hybrid Retrieval**: Combine vector search and knowledge graph for better results
 - **📊 Visualizations**: Generate visual representations of knowledge graphs
 - **🔄 Background Processing**: Asynchronous document ingestion and graph building
+- **🇹🇭 Thai Language Support**: Enhanced processing for Thai language content (see README-THAI-SUPPORT.md)
 
 ## API Endpoints
 
@@ -128,6 +129,27 @@ curl -X 'POST' \
 - NetworkX: Knowledge graph
 - PyMuPDF, pytesseract, easyocr: Document processing and OCR
 - And more (see requirements.txt)
+
+## Thai Language Support
+
+This API now includes enhanced support for Thai language documents and queries:
+
+1. **Thai Entity Extraction**: Specialized entity extraction for Thai text
+2. **Thai Query Processing**: Extract entities from Thai queries effectively
+3. **Multilingual Response Generation**: Automatically detect language and generate appropriate responses
+4. **Enhanced Error Handling**: Better error reporting for Thai content processing
+5. **Thai-Optimized Retrieval**: Improved retrieval and ranking for Thai content
+
+To test Thai language support:
+```
+# Run the Thai support test script
+python test_thai_support.py
+
+# Apply Thai language enhancements
+./update_thai_support.sh
+```
+
+See [README-THAI-SUPPORT.md](README-THAI-SUPPORT.md) for more details on Thai language capabilities.
 
 ## License
 

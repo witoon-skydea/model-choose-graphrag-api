@@ -8,12 +8,33 @@
       "embedding_model": "mxbai-embed-large:latest"
     },
     "TGO": {
-      "name": null,
+      "name": "TGO Company",
       "description": "",
       "db_dir": "db/TGO",
       "llm_model": "llama3:8b",
       "embedding_model": "mxbai-embed-large:latest"
+    },
+    "test_company": {
+      "name": "Test Company",
+      "description": "Test company",
+      "db_dir": "/Users/witoonpongsilathong/MCP_folder/mm_dev_mode/model-choose-graphrag-api-v1/db/test_company",
+      "llm_model": "llama3:8b",
+      "embedding_model": "mxbai-embed-large:latest"
+    },
+    "test_api": {
+      "name": "Test API Company",
+      "description": "Company for API testing",
+      "db_dir": "/Users/witoonpongsilathong/MCP_folder/mm_dev_mode/model-choose-graphrag-api-v1/db/test_api",
+      "llm_model": "llama3:8b",
+      "embedding_model": "mxbai-embed-large:latest"
+    },
+    "thai_demo": {
+      "name": "Thai Demo Company",
+      "description": "Test company for Thai language demo",
+      "db_dir": "/Users/witoonpongsilathong/MCP_folder/mm_dev_mode/model-choose-graphrag-api-v1/db/thai_demo",
+      "llm_model": "llama3:8b",
+      "embedding_model": "mxbai-embed-large:latest"
     }
   },
-  "active_company": "TGO"
+  "active_company": "thai_demo"
 }

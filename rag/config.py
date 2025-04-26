@@ -2,12 +2,21 @@
 Configuration module for multi-tenant RAG system with model selection
 """
 import os
+import sys
 import json
+import tempfile
 from typing import Dict, List, Optional, Any
 from pathlib import Path
 
+# Base directory for configuration - use absolute paths
+BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+
+# For MCP environment, use temp directory if needed
+TEMP_DIR = os.path.join(tempfile.gettempdir(), "mcp-graphrag")
+os.makedirs(TEMP_DIR, exist_ok=True)
+
 # Constants
-DEFAULT_CONFIG_FILE = "companies/config.json"
+DEFAULT_CONFIG_FILE = os.path.join(BASE_DIR, "companies/config.json")
 DEFAULT_COMPANY = "default"
 DEFAULT_LLM_MODEL = "llama3:8b"
 DEFAULT_EMBEDDING_MODEL = "mxbai-embed-large:latest"
@@ -16,14 +25,25 @@ class SystemConfig:
     """
     Class to manage global system configuration
     """
-    def __init__(self, config_path: str = "companies/system_config.json"):
+    def __init__(self, config_path: str = None):
         """
         Initialize the system configuration
         
         Args:
-            config_path: Path to the config file
+            config_path: Path to the config file (defaults to BASE_DIR/companies/system_config.json)
         """
-        self.config_path = config_path
+        if config_path is None:
+            # First try the standard location
+            self.config_path = os.path.join(BASE_DIR, "companies/system_config.json")
+            # If that's not writable, use temp directory
+            if not os.access(os.path.dirname(self.config_path), os.W_OK):
+                print(f"Warning: Cannot write to {os.path.dirname(self.config_path)}, using temp directory", file=sys.stderr)
+                self.config_path = os.path.join(TEMP_DIR, "system_config.json")
+                # Create the directory
+                os.makedirs(TEMP_DIR, exist_ok=True)
+        else:
+            self.config_path = config_path
+            
         self.config_data = self._load_config()
         
     def _load_config(self) -> Dict:
@@ -197,14 +217,23 @@ class CompanyConfig:
     """
     Class to manage company configurations for the multi-tenant RAG system
     """
-    def __init__(self, config_path: str = DEFAULT_CONFIG_FILE):
+    def __init__(self, config_path: str = None):
         """
         Initialize the company configuration
         
         Args:
-            config_path: Path to the config file
+            config_path: Path to the config file (defaults to BASE_DIR/companies/config.json)
         """
-        self.config_path = config_path
+        if config_path is None:
+            # First try the standard location
+            self.config_path = DEFAULT_CONFIG_FILE
+            # If that's not writable, use temp directory
+            if not os.access(os.path.dirname(self.config_path), os.W_OK):
+                print(f"Warning: Cannot write to {os.path.dirname(self.config_path)}, using temp directory", file=sys.stderr)
+                self.config_path = os.path.join(TEMP_DIR, "config.json")
+        else:
+            self.config_path = config_path
+            
         self.config_data = self._load_config()
         
     def _load_config(self) -> Dict:
@@ -236,12 +265,32 @@ class CompanyConfig:
         default_llm = sys_config.get_default_llm_model()
         default_embedding = sys_config.get_default_embedding_model()
         
+        # Determine the database directory
+        if os.path.dirname(self.config_path) == TEMP_DIR:
+            # We're using temp dir for config, so use temp for DB too
+            db_dir = os.path.join(TEMP_DIR, DEFAULT_COMPANY)
+        else:
+            # Standard location
+            db_dir = os.path.join(BASE_DIR, f"db/{DEFAULT_COMPANY}")
+            
+            # If not writable, fall back to temp
+            if not os.access(os.path.dirname(db_dir), os.W_OK):
+                db_dir = os.path.join(TEMP_DIR, DEFAULT_COMPANY)
+                
+        # Create the DB directory
+        try:
+            os.makedirs(db_dir, exist_ok=True)
+        except OSError:
+            # If still can't create it, use temp
+            db_dir = os.path.join(TEMP_DIR, DEFAULT_COMPANY)
+            os.makedirs(db_dir, exist_ok=True)
+        
         default_config = {
             "companies": {
                 DEFAULT_COMPANY: {
                     "name": "Default Company",
                     "description": "Default company for RAG system",
-                    "db_dir": f"db/{DEFAULT_COMPANY}",
+                    "db_dir": db_dir,
                     "llm_model": default_llm,
                     "embedding_model": default_embedding
                 }
@@ -250,10 +299,13 @@ class CompanyConfig:
         }
         
         # Ensure parent directory exists
-        os.makedirs(os.path.dirname(self.config_path), exist_ok=True)
-        
-        # Save default config
-        self._save_config(default_config)
+        try:
+            os.makedirs(os.path.dirname(self.config_path), exist_ok=True)
+            
+            # Save default config
+            self._save_config(default_config)
+        except OSError as e:
+            print(f"Warning: Could not save configuration: {e}", file=sys.stderr)
         
         return default_config
     
@@ -329,21 +381,38 @@ class CompanyConfig:
         if embedding_model is None:
             embedding_model = sys_config.get_default_embedding_model()
         
+        # Determine database path
+        if os.path.dirname(self.config_path) == TEMP_DIR:
+            # We're using temp dir for config, so use temp for DB too
+            db_dir = os.path.join(TEMP_DIR, company_id)
+        else:
+            # Try standard location
+            db_dir = os.path.join(BASE_DIR, f"db/{company_id}")
+            
         # Create company entry
         self.config_data.setdefault("companies", {})[company_id] = {
             "name": name,
             "description": description,
-            "db_dir": f"db/{company_id}",
+            "db_dir": db_dir,
             "llm_model": llm_model,
             "embedding_model": embedding_model
         }
         
         # Create company database directory
-        db_dir = self.config_data["companies"][company_id]["db_dir"]
-        os.makedirs(db_dir, exist_ok=True)
+        try:
+            os.makedirs(db_dir, exist_ok=True)
+        except OSError as e:
+            # If can't create in standard location, use temp
+            print(f"Warning: Could not create database directory: {e}, using temp dir", file=sys.stderr)
+            db_dir = os.path.join(TEMP_DIR, company_id)
+            os.makedirs(db_dir, exist_ok=True)
+            self.config_data["companies"][company_id]["db_dir"] = db_dir
         
         # Save config
-        self._save_config()
+        try:
+            self._save_config()
+        except OSError as e:
+            print(f"Warning: Could not save configuration: {e}", file=sys.stderr)
         
     def remove_company(self, company_id: str) -> None:
         """
@@ -421,8 +490,25 @@ class CompanyConfig:
         company_details = self.get_company_details(company_id)
         db_dir = company_details.get("db_dir", f"db/{company_id}")
         
+        # Make path absolute if it's not already
+        if not os.path.isabs(db_dir):
+            # Try regular base dir first
+            standard_db_dir = os.path.join(BASE_DIR, db_dir)
+            
+            # If not writable, use temp directory
+            if not os.access(os.path.dirname(standard_db_dir), os.W_OK):
+                db_dir = os.path.join(TEMP_DIR, company_id)
+                print(f"Warning: Using temporary directory for database: {db_dir}", file=sys.stderr)
+            else:
+                db_dir = standard_db_dir
+        
         # Ensure directory exists
-        os.makedirs(db_dir, exist_ok=True)
+        try:
+            os.makedirs(db_dir, exist_ok=True)
+        except OSError as e:
+            print(f"Warning: Could not create database directory: {e}, using temp dir", file=sys.stderr)
+            db_dir = os.path.join(TEMP_DIR, company_id)
+            os.makedirs(db_dir, exist_ok=True)
         
         return db_dir
     

@@ -1,0 +1,11 @@
+This is a sample text file for testing the GraphRAG API.
+
+The GraphRAG API combines knowledge graph and RAG capabilities to provide enhanced information retrieval and question answering.
+
+Some key features include:
+- Multi-model support for LLMs and embeddings
+- Knowledge graph extraction and querying
+- Hybrid retrieval combining vector and graph-based approaches
+- Visualization of knowledge graphs
+
+This test file should be processed by the API to demonstrate its capabilities.

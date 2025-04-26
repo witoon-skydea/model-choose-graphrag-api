@@ -133,15 +133,16 @@ def get_company_info(company_id=None):
         except ValueError:
             return None
     else:
-        active_company = config.get_active_company()
+        active_company_id = config.get_active_company()
+        active_company_details = config.get_company_details(active_company_id)
         return {
-            "id": active_company["id"],
-            "name": active_company["name"],
-            "description": active_company["description"],
+            "id": active_company_id,
+            "name": active_company_details.get("name"),
+            "description": active_company_details.get("description"),
             "active": True,
-            "llm_model": active_company["llm_model"],
-            "embedding_model": active_company["embedding_model"],
-            "db_dir": active_company["db_dir"]
+            "llm_model": active_company_details.get("llm_model"),
+            "embedding_model": active_company_details.get("embedding_model"),
+            "db_dir": active_company_details.get("db_dir")
         }
 
 async def ingest_files_task(
@@ -187,7 +188,7 @@ async def ingest_files_task(
                 }
                 return
         else:
-            active_company = config.get_active_company()["id"]
+            active_company = config.get_active_company()
             db_path = config.get_db_path()
             company_models = config.get_company_model_settings()
         
@@ -492,7 +493,7 @@ async def build_knowledge_graph(
         except ValueError as e:
             raise HTTPException(status_code=404, detail=str(e))
     else:
-        active_company = config.get_active_company()["id"]
+        active_company = config.get_active_company()
         db_path = config.get_db_path()
         company_models = config.get_company_model_settings()
     
@@ -558,7 +559,7 @@ async def visualize_knowledge_graph_endpoint(
         except ValueError as e:
             raise HTTPException(status_code=404, detail=str(e))
     else:
-        active_company = config.get_active_company()["id"]
+        active_company = config.get_active_company()
         db_path = config.get_db_path()
     
     # Get knowledge graph
@@ -596,7 +597,7 @@ async def query_endpoint(query_request: QueryRequest):
         except ValueError as e:
             raise HTTPException(status_code=404, detail=str(e))
     else:
-        active_company = config.get_active_company()["id"]
+        active_company = config.get_active_company()
         db_path = config.get_db_path()
         company_models = config.get_company_model_settings()
     

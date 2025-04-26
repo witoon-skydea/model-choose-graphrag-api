@@ -20,6 +20,9 @@ def contains_thai(text: str) -> bool:
     Returns:
         True if text contains significant Thai content
     """
+    if not text or len(text) < 10:
+        return False
+        
     # Thai Unicode range (approximate)
     thai_pattern = re.compile('[\u0E00-\u0E7F]')
     
@@ -302,6 +305,9 @@ class KnowledgeGraph:
         Args:
             documents: List of documents
             llm: LLM model (if None, a new one will be created)
+            
+        Returns:
+            Dict with statistics about the extraction process
         """
         from rag.llm import get_llm_model, extract_entities_relations
         from rag.llm.thai_entity_extraction import extract_thai_entities_relations
@@ -315,6 +321,7 @@ class KnowledgeGraph:
         successful_documents = 0
         total_entities = 0
         total_relations = 0
+        failed_documents = []
         
         # Process documents in smaller batches for better entity extraction
         batch_size = min(5, total_documents)  # Process max 5 documents at once
@@ -334,16 +341,31 @@ class KnowledgeGraph:
                     content = doc.page_content
                     if len(content) > 4000:
                         content = content[:4000]  # Use first 4000 chars for large documents
-                
+                    
                     # Check if content is primarily Thai
                     is_thai = contains_thai(content)
                     
-                    # Use Thai-specific extraction for Thai content
-                    if is_thai:
-                        print(f"  Detected Thai content, using Thai-specific extraction")
-                        entities, relations = extract_thai_entities_relations(llm, content)
-                    else:
-                        entities, relations = extract_entities_relations(llm, content)
+                    # Use appropriate extraction method based on language
+                    extraction_method = "thai" if is_thai else "standard"
+                    try:
+                        if is_thai:
+                            print(f"  Detected Thai content, using Thai-specific extraction")
+                            entities, relations = extract_thai_entities_relations(llm, content)
+                        else:
+                            entities, relations = extract_entities_relations(llm, content)
+                    except Exception as extract_error:
+                        print(f"  Extraction error using {extraction_method} method: {extract_error}")
+                        # Fallback to the alternative method if the primary one fails
+                        try:
+                            if is_thai:
+                                print(f"  Falling back to standard extraction")
+                                entities, relations = extract_entities_relations(llm, content)
+                            else:
+                                print(f"  Falling back to Thai extraction")
+                                entities, relations = extract_thai_entities_relations(llm, content)
+                        except Exception as fallback_error:
+                            print(f"  Fallback extraction also failed: {fallback_error}")
+                            raise
                     
                     if not entities:
                         print(f"  No entities found in document {doc_index}")
@@ -391,6 +413,11 @@ class KnowledgeGraph:
                 
                 except Exception as e:
                     print(f"Error processing document {doc_index}: {e}")
+                    failed_documents.append({
+                        "index": doc_index,
+                        "metadata": doc.metadata,
+                        "error": str(e)
+                    })
             
             # Save graph after each batch
             if self.graph.number_of_nodes() > 0:
@@ -400,8 +427,23 @@ class KnowledgeGraph:
         # Final save
         self.save_graph()
         
+        stats = {
+            "total_documents": total_documents,
+            "successful_documents": successful_documents,
+            "failed_documents": len(failed_documents),
+            "total_entities_added": total_entities,
+            "total_relations_added": total_relations,
+            "current_graph_size": {
+                "nodes": self.graph.number_of_nodes(),
+                "edges": self.graph.number_of_edges()
+            },
+            "failures": failed_documents[:10]  # Include only first 10 failures to keep response size reasonable
+        }
+        
         print(f"Processing complete: {successful_documents}/{total_documents} documents processed successfully")
         print(f"Knowledge graph now has {self.graph.number_of_nodes()} entities and {self.graph.number_of_edges()} relationships")
+        
+        return stats
     
     def visualize(self, output_path: str = None, max_nodes: int = 50):
         """

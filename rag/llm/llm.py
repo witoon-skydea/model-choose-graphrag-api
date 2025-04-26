@@ -36,6 +36,19 @@ User Question: {question}
 Your Answer:
 """
 
+# Thai-specific prompt template
+THAI_PROMPT_TEMPLATE = """
+คุณเป็นผู้ช่วยอัจฉริยะที่เป็นประโยชน์ ใช้บริบทต่อไปนี้เพื่อตอบคำถามของผู้ใช้
+หากคุณไม่ทราบคำตอบ ให้บอกว่าคุณไม่ทราบ อย่าพยายามสร้างคำตอบขึ้นมาเอง
+
+บริบทจากเอกสาร:
+{context}
+
+คำถามของผู้ใช้: {question}
+
+คำตอบของคุณ:
+"""
+
 # Enhanced prompt template that includes knowledge graph information
 GRAPH_PROMPT_TEMPLATE = """
 You are a helpful assistant. Use the following pieces of context and knowledge graph information to answer the user's question.
@@ -50,6 +63,22 @@ Knowledge Graph Information:
 User Question: {question}
 
 Your Answer:
+"""
+
+# Thai-specific graph prompt template
+THAI_GRAPH_PROMPT_TEMPLATE = """
+คุณเป็นผู้ช่วยอัจฉริยะที่เป็นประโยชน์ ใช้บริบทและข้อมูลกราฟความรู้ต่อไปนี้เพื่อตอบคำถามของผู้ใช้
+หากคุณไม่ทราบคำตอบ ให้บอกว่าคุณไม่ทราบ อย่าพยายามสร้างคำตอบขึ้นมาเอง
+
+บริบทจากเอกสาร:
+{context}
+
+ข้อมูลกราฟความรู้:
+{graph_context}
+
+คำถามของผู้ใช้: {question}
+
+คำตอบของคุณ:
 """
 
 # Entity extraction prompt
@@ -155,6 +184,16 @@ def generate_response(llm, documents: List[Document], question: str, custom_temp
     Returns:
         Generated response
     """
+    # Detect if question is in Thai
+    from rag.knowledge_graph.graph import contains_thai
+    is_thai_question = contains_thai(question)
+    
+    # Check if documents contain Thai content
+    has_thai_content = any(contains_thai(doc.page_content) for doc in documents if doc.page_content)
+    
+    # Determine whether to use Thai templates (if either question or majority of content is Thai)
+    use_thai_templates = is_thai_question or has_thai_content
+    
     # Format documents into context string
     context = format_context(documents)
     
@@ -168,11 +207,11 @@ def generate_response(llm, documents: List[Document], question: str, custom_temp
             if "{graph_context}" in custom_template:
                 template = custom_template
             else:
-                # Otherwise use the default graph template
-                template = GRAPH_PROMPT_TEMPLATE
+                # Otherwise use the default graph template based on language
+                template = THAI_GRAPH_PROMPT_TEMPLATE if use_thai_templates else GRAPH_PROMPT_TEMPLATE
         else:
-            # Use default graph template
-            template = GRAPH_PROMPT_TEMPLATE
+            # Use default graph template based on language
+            template = THAI_GRAPH_PROMPT_TEMPLATE if use_thai_templates else GRAPH_PROMPT_TEMPLATE
             
         # Create prompt
         prompt = PromptTemplate(
@@ -183,15 +222,30 @@ def generate_response(llm, documents: List[Document], question: str, custom_temp
         # Create chain
         chain = LLMChain(llm=llm, prompt=prompt)
         
-        # Run chain
-        response = chain.invoke({
-            "context": context, 
-            "graph_context": graph_context, 
-            "question": question
-        })
+        # Run chain with error handling
+        try:
+            response = chain.invoke({
+                "context": context, 
+                "graph_context": graph_context, 
+                "question": question
+            })
+        except Exception as e:
+            print(f"Error generating response with graph data: {e}")
+            # Fallback to simpler prompt
+            fallback_template = THAI_PROMPT_TEMPLATE if use_thai_templates else PROMPT_TEMPLATE
+            fallback_prompt = PromptTemplate(
+                template=fallback_template,
+                input_variables=["context", "question"]
+            )
+            fallback_chain = LLMChain(llm=llm, prompt=fallback_prompt)
+            response = fallback_chain.invoke({"context": context, "question": question})
     else:
         # Use standard template without graph data
-        template = custom_template if custom_template else PROMPT_TEMPLATE
+        if custom_template:
+            template = custom_template
+        else:
+            # Use appropriate language template
+            template = THAI_PROMPT_TEMPLATE if use_thai_templates else PROMPT_TEMPLATE
         
         # Create prompt
         prompt = PromptTemplate(
@@ -202,8 +256,14 @@ def generate_response(llm, documents: List[Document], question: str, custom_temp
         # Create chain
         chain = LLMChain(llm=llm, prompt=prompt)
         
-        # Run chain
-        response = chain.invoke({"context": context, "question": question})
+        # Run chain with error handling
+        try:
+            response = chain.invoke({"context": context, "question": question})
+        except Exception as e:
+            print(f"Error generating response: {e}")
+            # Create a simple direct response as fallback
+            error_msg = "ขออภัย เกิดข้อผิดพลาดในการประมวลผล กรุณาลองใหม่อีกครั้ง" if use_thai_templates else "Sorry, an error occurred during processing. Please try again."
+            return error_msg
     
     return response["text"]
 
@@ -286,7 +346,7 @@ JSON response:"""
 
 def extract_query_entities(llm, query: str) -> List[str]:
     """
-    Extract entities from a query using the LLM
+    Extract entities from a query using the LLM with Thai language support
     
     Args:
         llm: LLM model
@@ -295,6 +355,22 @@ def extract_query_entities(llm, query: str) -> List[str]:
     Returns:
         List of entity names
     """
+    # Check if query contains Thai characters
+    from rag.knowledge_graph.graph import contains_thai
+    is_thai = contains_thai(query)
+    
+    if is_thai:
+        # Use Thai-specific entity extraction
+        try:
+            from rag.llm.thai_entity_extraction import extract_thai_query_entities
+            entities = extract_thai_query_entities(llm, query)
+            if entities:
+                print(f"Extracted Thai entities: {entities}")
+                return entities
+        except Exception as e:
+            print(f"Thai entity extraction failed: {e}, falling back to standard extraction")
+    
+    # Standard English entity extraction
     prompt = f"""Extract the key entities (topics, people, companies, places, etc.) from this query.
 Return ONLY a valid JSON array of entity names, like this: ["Entity1", "Entity2"]
 Do not include any explanations, just the JSON array.
@@ -336,7 +412,7 @@ JSON array:"""
         print(f"Error extracting entities from query: {e}")
         # Last resort: extract any words that might be entities
         words = query.split()
-        return [w for w in words if len(w) > 3 and w[0].isupper()]
+        return [w for w in words if len(w) > 3 and (w[0].isupper() or not w.isascii())]
 
 def list_available_llm_models():
     """

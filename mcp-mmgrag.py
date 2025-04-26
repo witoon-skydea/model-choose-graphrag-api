@@ -447,20 +447,49 @@ def add_file(company_name: str, file_path: str, description: str = "") -> str:
 @mcp.tool()
 def add_chat_text(company_name: str, text: str, description: str = "") -> str:
     """เพิ่มข้อความแชทให้กับบริษัท"""
+    # Check if text is empty
+    if not text or len(text.strip()) == 0:
+        return json.dumps({
+            "success": False,
+            "error": "ข้อความว่างเปล่า กรุณาระบุข้อความที่ต้องการเพิ่ม"
+        }, ensure_ascii=False, indent=2)
+    
+    # Detect Thai language
+    from rag.knowledge_graph.graph import contains_thai
+    is_thai = contains_thai(text)
+    
     # Create a temporary text file
     with tempfile.NamedTemporaryFile(suffix=".txt", mode="w", encoding="utf-8", delete=False) as tmp:
         tmp.write(text)
         temp_path = tmp.name
     
     try:
-        # Process file
+        # Process file with appropriate settings
         result = graphrag_manager.process_file(
             temp_path, 
             company_id=company_name,
-            build_graph=True
+            build_graph=True,
+            # If text contains Thai, we'll enable better extraction
+            llm_model="llama3:8b" if is_thai else None
         )
         
+        # Add Thai language detection to the result
+        if isinstance(result, dict):
+            result["contains_thai"] = is_thai
+            result["text_length"] = len(text)
+            result["description"] = description if description else "Added via MCP chat interface"
+            
         return json.dumps(result, ensure_ascii=False, indent=2)
+    except Exception as e:
+        import traceback
+        error_details = traceback.format_exc()
+        error_message = f"เกิดข้อผิดพลาด: {str(e)}" if is_thai else f"Error occurred: {str(e)}"
+        
+        return json.dumps({
+            "success": False,
+            "error": error_message,
+            "details": error_details[:500]  # Truncate to avoid excessively long error messages
+        }, ensure_ascii=False, indent=2)
     finally:
         # Clean up the temporary file
         if os.path.exists(temp_path):
